@@ -1,37 +1,47 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
 
+import { UltraVerifier } from '../circuits/createAccount/contract/createAccount/plonk_vk.sol';
+
 contract UserManagement {
-  uint256 private constant FIELD_MODULUS =
-    21888242871839275222246405745257275088548364400416034343698204186575808495617;
+  UltraVerifier verifier;
+
   uint32 private constant _HAS_VOTED = 1;
   uint32 private constant _NOT_VOTED = 2;
 
   struct User {
     uint id;
     string userName;
-    bytes32 houseAddress;
+    bytes houseAddress;
     uint32 voted;
   }
 
-  event userCreated(uint userId, bool createdSuccesfully);
+  event userCreated(uint userId, bool createdSuccessfully);
 
   address owner;
   uint256 private currentUserID = 1;
   mapping(address => User) private users;
 
-  constructor() {
+  constructor(address verifierAddy) {
+    verifier = UltraVerifier(verifierAddy);
     owner = msg.sender;
   }
 
   function createUser(
     string calldata _userName,
-    bytes32 _hiddenAddress
+    bytes calldata proof,
+    uint256 userAddressHashed
   ) external {
+    require(users[msg.sender].id == 0, 'User already created');
+
+    bytes32[] memory publicInputs = new bytes32[](1);
+    publicInputs[0] = bytes32(userAddressHashed);
+    require(verifier.verify(proof, publicInputs), 'Invalid Proof');
+
     User memory newUser = User(
       currentUserID,
       _userName,
-      _hiddenAddress,
+      abi.encodePacked(userAddressHashed),
       _NOT_VOTED
     );
 
@@ -44,10 +54,9 @@ contract UserManagement {
     return users[msg.sender];
   }
 
-  function getAddressAsField(
-    string memory userAddress
-  ) public pure returns (uint256) {
-    uint256 hash = uint256(keccak256(abi.encodePacked(userAddress)));
-    return hash % FIELD_MODULUS;
+  function convertString(
+    string calldata currentWord
+  ) external pure returns (bytes memory) {
+    return bytes(currentWord);
   }
 }
